@@ -4,10 +4,9 @@ import csv
 import random
 from app.schema import Customer, KeyNamingScheme, Product, EmbeddingModels
 from config import base_dir
-import pdb
+
 
 app = create_app(os.environ.get('ENV') or "default")
-
 
 
 def setup_ids(pipeline, key, row_index):
@@ -51,7 +50,7 @@ def load_user_data(faker_obj, pipeline):
             userid=user_id,
         )
 
-        pipeline.hset(KeyNamingScheme.USER_KEY.value.format(user_id), mapping=user.__dict__)
+        pipeline.hset(KeyNamingScheme.USER_KEY.value+user_id, mapping=user.__dict__)
 
         available_user_ids = app.redis_client.scard("user:allowed:ids")
 
@@ -90,7 +89,7 @@ def load_product_data(faker_obj, pipeline):
         )
 
         pipeline.json().set(
-            KeyNamingScheme.PRODUCT_KEY.value.format(product_id),
+            KeyNamingScheme.PRODUCT_KEY.value+product_id,
             "$",
             product.__dict__
         )
@@ -117,7 +116,7 @@ def load_product_reviews(pipeline):
 
     list(map(
         lambda item : pipeline.json().set(
-            KeyNamingScheme.PRODUCT_REVIEW.value.format(item.Id),
+            KeyNamingScheme.PRODUCT_REVIEW.value+item.Id,
             "$",
            __update_review_embeddings(item, app.open_ai_client).__dict__
         ),
@@ -143,3 +142,56 @@ def load_dev_data():
     load_product_reviews(pipeline)
 
     pipeline.execute()
+
+
+@app.cli.command()
+def register_indexers():
+
+
+    from app.indexers import PRODUCT_REVIEW_SCHEMA, PRODUCT_SCHEMA
+
+    from redis.commands.search.indexDefinition import IndexDefinition, IndexType
+    from redis.exceptions import ResponseError
+
+    
+    # Registering Product review index
+
+    try:
+        product_index_defination =IndexDefinition(
+            prefix=[KeyNamingScheme.PRODUCT_REVIEW.value], 
+            index_type=IndexType.JSON
+        )
+
+        app.redis_client.ft(KeyNamingScheme.PRODUCT_REVIEW_INDEXER.value).create_index(
+            fields=PRODUCT_REVIEW_SCHEMA,
+            definition=product_index_defination
+        )
+
+        print("Product Review Indexer created")
+
+    except ResponseError as e:
+
+        print(f"Product Review {e}")
+
+
+    # Registering Product index
+
+    try:
+
+        product_indexer_defination = IndexDefinition(
+            prefix=[KeyNamingScheme.PRODUCT_KEY.value],
+            index_type=IndexType.JSON
+        )
+
+        app.redis_client.ft(
+            KeyNamingScheme.PRODUCT_INDEXER.value
+        ).create_index(
+            fields=PRODUCT_SCHEMA,
+            definition=product_indexer_defination
+        )
+
+        print("Product Indexer created")
+
+    except ResponseError as e:
+
+        print(f"Product {e}")

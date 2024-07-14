@@ -32,7 +32,7 @@ class DevelopmentConfig(Config):
         from redis import Redis
         from openai import OpenAI
 
-        app.redis_client = Redis(host='localhost', port=6379, db=0)
+        app.redis_client = Redis(host='localhost', port=6379, db=0, decode_responses=True)
 
         app.open_ai_client = OpenAI(api_key=app.config['OPENAI_KEY'])
 
